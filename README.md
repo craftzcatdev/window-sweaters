@@ -89,7 +89,7 @@ Claude = #D58561 atelier-claude
 
 Names match app-name prefixes, ignoring capitalisation; the longest match wins. You can also put your own PNG charts in the charts folder to replace built-in patterns.
 
-If you like setting things up from the command line, Window Sweaters also runs an optional shell script at startup, if you have one at `~/.config/window-sweaters/sweatersrc` or `~/.sweatersrc`.
+If you like setting things up from the command line, Window Sweaters also runs an optional shell script at startup, if you have one at `~/.config/window-sweaters/sweatersrc` or `~/.sweatersrc`. Make it executable yourself first (`chmod +x`) — Window Sweaters won't run a script that isn't already marked executable.
 
 ## Taking it off
 

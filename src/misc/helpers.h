@@ -36,14 +36,17 @@ static inline bool file_exists(const char* filename) {
   return true;
 }
 
-static inline bool file_setx(const char* filename) {
+// Whether `filename` already carries the owner-execute bit. Deliberately
+// does not chmod it: making a dropped-in file executable on the app's own
+// initiative would mean a file only needs to be *written* to this path, not
+// *marked executable*, to run at the next launch. Requiring the bit to
+// already be set keeps this an explicit, deliberate opt-in by whoever placed
+// the file, matching how shell rc hooks and similar startup scripts work
+// elsewhere.
+static inline bool file_is_executable(const char* filename) {
   struct stat buffer;
   if (stat(filename, &buffer) != 0) return false;
-  bool is_executable = buffer.st_mode & S_IXUSR;
-  if (!is_executable && chmod(filename, S_IXUSR | buffer.st_mode) != 0) {
-    return false;
-  }
-  return true;
+  return (buffer.st_mode & S_IXUSR) != 0;
 }
 
 static inline void execute_config_file(const char* name, const char* filename) {
@@ -61,8 +64,9 @@ static inline void execute_config_file(const char* name, const char* filename) {
     };
   }
 
-  if (!file_setx(path)) {
-    printf("[!] Failed to make config at '%s' executable...\n", path);
+  if (!file_is_executable(path)) {
+    printf("[!] Config file at '%s' is not executable; run 'chmod +x \"%s\"' "
+           "yourself to enable it.\n", path, path);
     return;
   }
 

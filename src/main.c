@@ -10,6 +10,7 @@
 #include "misc/ax.h"
 #include "misc/yabai.h"
 #include <stdio.h>
+#include <string.h>
 #include <dlfcn.h>
 
 #define VERSION_OPT_LONG "--version"
@@ -70,15 +71,28 @@ static TABLE_COMPARE_FUNC(cmp_blacklist) {
   return strcmp((char*)key_a, (char*)key_b) == 0;
 }
 
-static void message_handler(void* data, uint32_t len) {
+// Applies every "key=value" string packed into [data, data+len) to `settings`.
+// Bounded by `len` rather than trusting an embedded NUL: `data` originates
+// from a local Mach message (see mach_message_callback), and a malformed or
+// hostile sender in the same user session could omit the final terminator.
+// Scanning past `len` would read adjacent heap memory (a local, same-user
+// out-of-bounds read/crash) instead of just failing to parse.
+static uint32_t apply_message(struct settings* settings, void* data, uint32_t len) {
   char* message = data;
+  char* end = message + len;
   uint32_t update_mask = 0;
-  struct settings settings = g_settings;
 
-  while(message && *message) {
-    update_mask |= parse_settings(&settings, 1, &message);
-    message += strlen(message) + 1;
+  while (message < end && *message) {
+    update_mask |= parse_settings(settings, 1, &message);
+    char* terminator = memchr(message, '\0', (size_t)(end - message));
+    message = terminator ? terminator + 1 : end;
   }
+  return update_mask;
+}
+
+static void message_handler(void* data, uint32_t len) {
+  struct settings settings = g_settings;
+  uint32_t update_mask = apply_message(&settings, data, len);
 
   if (settings.apply_to > 0) {
     struct border* border = table_find(&g_windows, &settings.apply_to);
@@ -97,14 +111,8 @@ static void message_handler(void* data, uint32_t len) {
         if (bucket->value) {
           struct border* border = bucket->value;
           if (border->setting_override.enabled) {
-            char* message = data;
-            uint32_t window_update_mask = 0;
-            while(message && *message) {
-              window_update_mask |= parse_settings(&border->setting_override,
-                                                   1,
-                                                   &message                  );
-              message += strlen(message) + 1;
-            }
+            uint32_t window_update_mask =
+                apply_message(&border->setting_override, data, len);
 
             if (window_update_mask
                 && !((update_mask & BORDER_UPDATE_MASK_ALL)
