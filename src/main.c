@@ -75,17 +75,21 @@ static TABLE_COMPARE_FUNC(cmp_blacklist) {
 // Bounded by `len` rather than trusting an embedded NUL: `data` originates
 // from a local Mach message (see mach_message_callback), and a malformed or
 // hostile sender in the same user session could omit the final terminator.
-// Scanning past `len` would read adjacent heap memory (a local, same-user
-// out-of-bounds read/crash) instead of just failing to parse.
+// The terminator is located *before* calling parse_settings, not after:
+// parse_settings (and the strlen/sscanf/strcmp calls inside it) treats
+// `message` as an ordinary NUL-terminated C string, so an unterminated final
+// chunk would still read past `end` inside that call if we only checked
+// bounds on the way to computing the *next* chunk's start.
 static uint32_t apply_message(struct settings* settings, void* data, uint32_t len) {
   char* message = data;
   char* end = message + len;
   uint32_t update_mask = 0;
 
   while (message < end && *message) {
-    update_mask |= parse_settings(settings, 1, &message);
     char* terminator = memchr(message, '\0', (size_t)(end - message));
-    message = terminator ? terminator + 1 : end;
+    if (!terminator) break; // unterminated trailing chunk: drop it, don't parse it
+    update_mask |= parse_settings(settings, 1, &message);
+    message = terminator + 1;
   }
   return update_mask;
 }
